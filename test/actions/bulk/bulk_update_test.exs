@@ -1136,8 +1136,10 @@ defmodule Ash.Test.Actions.BulkUpdateTest do
 
   test "runs changes in batches" do
     create_records = fn count ->
+      suffix = System.unique_integer([:positive])
+
       Stream.iterate(1, &(&1 + 1))
-      |> Stream.map(fn i -> %{title: "title#{i}"} end)
+      |> Stream.map(fn i -> %{title: "title#{i}-#{suffix}"} end)
       |> Stream.take(count)
       |> Ash.bulk_create!(Post, :create, return_stream?: true, return_records?: true)
       |> Stream.map(fn {:ok, result} -> result end)
@@ -1473,7 +1475,7 @@ defmodule Ash.Test.Actions.BulkUpdateTest do
                errors: [%Ash.Error.Forbidden{}, %Ash.Error.Forbidden{}],
                records: []
              } =
-               Ash.bulk_create!([%{title: "title1"}, %{title: "title2"}], Post, :create,
+               Ash.bulk_create!([%{title: "title3"}, %{title: "title4"}], Post, :create,
                  return_stream?: true,
                  return_records?: true,
                  authorize?: false
