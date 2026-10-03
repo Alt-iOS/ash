@@ -26,6 +26,39 @@ defmodule Ash.Test.ManageRelationshipTest do
         change manage_relationship(:many_to_many_resources, type: :direct_control)
       end
 
+      create :create_bulk do
+        accept [:name]
+        argument :other_resources, {:array, :map}
+        argument :many_to_many_resources, {:array, :map}
+
+        change manage_relationship(:other_resources,
+                 type: :direct_control,
+                 bulk?: true,
+                 on_no_match: {:create, :invalid}
+               )
+
+        change manage_relationship(:many_to_many_resources, type: :direct_control, bulk?: true)
+      end
+
+      update :update_bulk do
+        require_atomic? false
+        argument :other_resources, {:array, :map}
+        argument :many_to_many_resources, {:array, :map}
+
+        change manage_relationship(:other_resources, type: :direct_control, bulk?: true)
+        change manage_relationship(:many_to_many_resources, type: :direct_control, bulk?: true)
+      end
+
+      create :create_bulk_custom_path do
+        argument :other_resources, {:array, :map}
+
+        change manage_relationship(:other_resources,
+                 type: :direct_control,
+                 bulk?: true,
+                 error_path: [:custom]
+               )
+      end
+
       create :debug_error_return_from_manage_relationship do
         accept [:name]
         argument :other_resources, {:array, :map}
@@ -324,6 +357,11 @@ defmodule Ash.Test.ManageRelationshipTest do
 
     actions do
       defaults [:read, create: :*, update: :*]
+
+      create :invalid do
+        accept [:required_attribute, :order]
+        validate present(:order)
+      end
 
       destroy :archive do
         primary? true
@@ -1474,6 +1512,79 @@ defmodule Ash.Test.ManageRelationshipTest do
       # Related resource should be soft-destroyed
       assert {:ok, reloaded_other} = Ash.get(OtherResource, other_id)
       assert not is_nil(reloaded_other.archived_at)
+    end
+  end
+
+  describe "bulk managed creation errors" do
+    test "retains every error at its original has_many input" do
+      assert {:error, %Ash.Error.Invalid{errors: errors}} =
+               ParentResource
+               |> Ash.Changeset.for_create(:create_bulk, %{
+                 other_resources: [%{required_attribute: "valid", order: 1}, %{}]
+               })
+               |> Ash.create()
+
+      assert Enum.sort(Enum.map(errors, & &1.path)) == [
+               [:other_resources, 1],
+               [:other_resources, 1]
+             ]
+
+      assert Enum.sort(Enum.map(errors, & &1.field)) == [:order, :required_attribute]
+    end
+
+    test "maps the create subset back past an existing has_many input" do
+      parent =
+        ParentResource
+        |> Ash.Changeset.for_create(:create, %{
+          other_resources: [%{required_attribute: "existing"}]
+        })
+        |> Ash.create!()
+
+      [existing] = parent.other_resources
+
+      assert {:error, %Ash.Error.Invalid{errors: errors}} =
+               parent
+               |> Ash.Changeset.for_update(:update_bulk, %{
+                 other_resources: [
+                   %{id: existing.id, required_attribute: "updated"},
+                   %{required_attribute: "new", order: 1},
+                   %{}
+                 ]
+               })
+               |> Ash.update()
+
+      assert Enum.map(errors, & &1.path) == [[:other_resources, 2]]
+    end
+
+    test "retains every many_to_many error past an existing input" do
+      parent =
+        ParentResource
+        |> Ash.Changeset.for_create(:create, %{many_to_many_resources: [%{name: "existing"}]})
+        |> Ash.create!()
+
+      [existing] = parent.many_to_many_resources
+
+      assert {:error, %Ash.Error.Invalid{errors: errors}} =
+               parent
+               |> Ash.Changeset.for_update(:update_bulk, %{
+                 many_to_many_resources: [
+                   %{id: existing.id, name: "existing"},
+                   %{name: "new"},
+                   %{}
+                 ]
+               })
+               |> Ash.update()
+
+      assert Enum.sort(Enum.map(errors, & &1.path)) == [[:many_to_many_resources, 2]]
+
+      assert Enum.all?(errors, &match?(%Ash.Error.Changes.Required{field: :name}, &1))
+    end
+
+    test "honors an explicit error path without appending the bulk index" do
+      assert {:error, %Ash.Error.Invalid{errors: [%{path: [:custom]}]}} =
+               ParentResource
+               |> Ash.Changeset.for_create(:create_bulk_custom_path, %{other_resources: [%{}]})
+               |> Ash.create()
     end
   end
 
