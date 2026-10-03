@@ -932,7 +932,7 @@ defmodule Ash.Test.Actions.BulkDestroyTest do
                errors: [%Ash.Error.Forbidden{}, %Ash.Error.Forbidden{}],
                records: []
              } =
-               Ash.bulk_create!([%{title: "title1"}, %{title: "title2"}], Post, :create,
+               Ash.bulk_create!([%{title: "title3"}, %{title: "title4"}], Post, :create,
                  return_stream?: true,
                  return_records?: true
                )
