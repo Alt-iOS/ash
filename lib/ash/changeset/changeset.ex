@@ -5977,8 +5977,10 @@ defmodule Ash.Changeset do
       doc: """
       When `true`, uses bulk create operations for managing has_many relationships instead of
       creating records individually. This can be more efficient for large numbers of related
-      records, but error paths may not correctly identify which specific input caused a failure
-      when a constraint violation occurs during the batch insert.
+      records. Errors are reported against the input that caused them, and identities with
+      `pre_check_with` or `eager_check_with` are checked for each input before the batch is
+      inserted. An error the data layer raises for the batch as a whole, such as a constraint
+      violation, cannot be traced to the input that caused it.
       """
     ]
   ]
