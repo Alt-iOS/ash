@@ -164,6 +164,10 @@ defmodule Ash.Actions.Helpers.Identity do
       actor: first.context[:private][:actor],
       authorize?: first.context[:private][:authorize?],
       tracer: first.context[:private][:tracer],
+      # Check uniqueness "as of" the write's instant: on a temporal resource the
+      # new row is `[as_of, ∞)`, so the conflicting set is the rows valid at `as_of`
+      # (an `@> as_of` read). `nil` (the default-`now()` write) leaves the read to
+      # default to `now()`, which matches the period the data layer will write.
       as_of: first.as_of,
       domain: domain
     )
