@@ -3301,9 +3301,7 @@ defmodule Ash.Changeset do
               changeset
             end
 
-          if identity.pre_check_with &&
-               (changeset.action_type == :create ||
-                  Enum.any?(identity.keys, &changing_attribute?(changeset, &1))) do
+          if identity.pre_check_with do
             before_action(changeset, &validate_identity(&1, identity, identity.pre_check_with))
           else
             changeset

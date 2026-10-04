@@ -37,6 +37,19 @@ defmodule Ash.Test.Actions.IdentityTest do
     actions do
       default_accept :*
       defaults [:read, :destroy, create: :*, update: :*]
+
+      update :move_url do
+        require_atomic? false
+        argument :new_url, :string, allow_nil?: false
+
+        change before_action(fn changeset, _context ->
+                 Ash.Changeset.force_change_attribute(
+                   changeset,
+                   :url,
+                   changeset.arguments.new_url
+                 )
+               end)
+      end
     end
 
     calculations do
@@ -97,6 +110,41 @@ defmodule Ash.Test.Actions.IdentityTest do
         Post
         |> Ash.Changeset.for_create(:create, %{title: "george", url: "google.com"})
         |> Ash.create!()
+      end
+    end
+
+    test "checks a key changed after the update is built" do
+      Post
+      |> Ash.Changeset.for_create(:create, %{title: "fred", url: "google.com", uniq_nil: "foo"})
+      |> Ash.create!()
+
+      post =
+        Post
+        |> Ash.Changeset.for_create(:create, %{title: "george", url: "bing.com", uniq_nil: "bar"})
+        |> Ash.create!()
+
+      assert_raise Ash.Error.Invalid, ~r/url: has already been taken/, fn ->
+        post
+        |> Ash.Changeset.for_update(:update, %{})
+        |> Ash.Changeset.force_change_attribute(:url, "google.com")
+        |> Ash.update!()
+      end
+    end
+
+    test "checks a key changed in a before_action hook" do
+      Post
+      |> Ash.Changeset.for_create(:create, %{title: "fred", url: "google.com", uniq_nil: "foo"})
+      |> Ash.create!()
+
+      post =
+        Post
+        |> Ash.Changeset.for_create(:create, %{title: "george", url: "bing.com", uniq_nil: "bar"})
+        |> Ash.create!()
+
+      assert_raise Ash.Error.Invalid, ~r/url: has already been taken/, fn ->
+        post
+        |> Ash.Changeset.for_update(:move_url, %{new_url: "google.com"})
+        |> Ash.update!()
       end
     end
   end
