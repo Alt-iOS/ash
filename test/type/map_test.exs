@@ -260,6 +260,27 @@ defmodule Ash.Type.MapTest do
            ] = changeset.errors
   end
 
+  test "array fields take the indexed maps forms send" do
+    constraints = [
+      fields: [
+        lines: [
+          type: {:array, :map},
+          constraints: [items: [fields: [quantity: [type: :integer]]]]
+        ]
+      ]
+    ]
+
+    {:ok, value} =
+      Ash.Type.cast_input(
+        :map,
+        %{"lines" => %{"1" => %{"quantity" => "2"}, "0" => %{"quantity" => "1"}}},
+        constraints
+      )
+
+    assert {:ok, %{lines: [%{quantity: 1}, %{quantity: 2}]}} =
+             Ash.Type.apply_constraints(:map, value, constraints)
+  end
+
   test "maps without constraints are left as is" do
     changeset =
       Post

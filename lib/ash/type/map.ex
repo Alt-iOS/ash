@@ -470,7 +470,7 @@ defmodule Ash.Type.Map do
   defp check_field(result, field, field_value, field_constraints) do
     case Ash.Type.cast_input(
            field_constraints[:type],
-           field_value,
+           Ash.Type.Helpers.handle_indexed_maps(field_constraints[:type], field_value),
            field_constraints[:constraints] || []
          ) do
       {:ok, field_value} ->
