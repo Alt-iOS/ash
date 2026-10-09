@@ -816,7 +816,11 @@ defmodule Ash.Resource.Info do
   end
 
   @doc "Returns true or false if the input is accepted by the action, as an argument or an attribute"
-  @spec action_input?(Ash.Resource.t(), action :: atom(), input :: atom() | String.t()) ::
+  @spec action_input?(
+          Spark.Dsl.t() | Ash.Resource.t(),
+          action :: atom(),
+          input :: atom() | String.t()
+        ) ::
           boolean()
   def action_input?(resource, action, input) do
     case Extension.get_persisted(resource, {:action_inputs, action}) do
