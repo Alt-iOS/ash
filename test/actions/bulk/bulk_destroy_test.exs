@@ -573,7 +573,7 @@ defmodule Ash.Test.Actions.BulkDestroyTest do
 
   test "the `filter` option skips records that no longer match it with the stream strategy" do
     [unchanged, changed] =
-      Ash.bulk_create!([%{title: "title"}, %{title: "title"}], Post, :create,
+      Ash.bulk_create!([%{title: "title"}, %{title: "other title"}], Post, :create,
         return_records?: true,
         authorize?: false
       ).records
@@ -1074,7 +1074,7 @@ defmodule Ash.Test.Actions.BulkDestroyTest do
                errors: [%Ash.Error.Forbidden{}, %Ash.Error.Forbidden{}],
                records: []
              } =
-               Ash.bulk_create!([%{title: "title1"}, %{title: "title2"}], Post, :create,
+               Ash.bulk_create!([%{title: "title3"}, %{title: "title4"}], Post, :create,
                  return_stream?: true,
                  return_records?: true
                )
