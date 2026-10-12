@@ -414,7 +414,7 @@ defmodule Ash.Type.CompositeTypeHelpers do
     type = config[:type]
     constraints = config[:constraints] || []
 
-    case Ash.Type.cast_input(type, value, constraints) do
+    case Ash.Type.cast_input(type, Ash.Type.Helpers.handle_indexed_maps(type, value), constraints) do
       {:ok, cast_value} ->
         case Ash.Type.apply_constraints(type, cast_value, constraints) do
           {:ok, nil} ->
