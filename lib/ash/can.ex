@@ -1017,12 +1017,36 @@ defmodule Ash.Can do
         tenant: opts[:atomic_changeset].to_tenant,
         args: opts[:atomic_changeset].arguments,
         context: opts[:atomic_changeset].context,
-        changeset: opts[:atomic_changeset]
+        changeset: without_raising_branches(opts[:atomic_changeset])
       )
     else
       expr
     end
   end
+
+  # Policies judge the value an atomic update writes, so their `atomic_ref`s leave out the
+  # branches of it that only raise, like the atomic validations folded into it. The update
+  # still raises them when it writes the value. Inside a policy filter, a data layer may evaluate
+  # such a branch ahead of time, as Postgres does while planning, and raise it for rows the
+  # update would write.
+  defp without_raising_branches(changeset) do
+    %{
+      changeset
+      | atomics: Keyword.new(changeset.atomics, &without_raising_branch/1),
+        create_atomics: Keyword.new(changeset.create_atomics, &without_raising_branch/1)
+    }
+  end
+
+  defp without_raising_branch({field, value}),
+    do: {field, Ash.Filter.map(value, &written_branch/1)}
+
+  defp written_branch(%Ash.Query.Function.If{arguments: [_, %Ash.Query.Function.Error{}, value]}),
+    do: written_branch(value)
+
+  defp written_branch(%Ash.Query.Function.If{arguments: [_, value, %Ash.Query.Function.Error{}]}),
+    do: written_branch(value)
+
+  defp written_branch(other), do: other
 
   defp run_check(domain, actor, subject, opts) do
     authorizers =

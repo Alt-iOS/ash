@@ -1389,18 +1389,12 @@ defmodule Ash.Actions.ManagedRelationships do
 
         {:ok, new_value, (bulk_notifications || []) ++ notifications}
 
-      %Ash.BulkResult{status: :error, errors: errors} ->
+      %Ash.BulkResult{status: status, errors: errors} when status in [:error, :partial_success] ->
         debug_log(relationship.name, changeset, :create, :error, opts[:debug?])
-        error = List.first(List.wrap(errors))
 
-        if error do
-          {_, input_index} = List.first(to_create)
-
-          error =
-            error
-            |> set_error_path(relationship, input_index, opts)
-
-          {:error, error}
+        if errors not in [nil, []] do
+          input_indices = Enum.map(to_create, &elem(&1, 1))
+          {:error, set_bulk_error_paths(errors, input_indices, relationship, opts)}
         else
           {:error,
            add_bread_crumb(
@@ -1553,18 +1547,13 @@ defmodule Ash.Actions.ManagedRelationships do
             (bulk_notifications || []) ++ notifications
           )
 
-        %Ash.BulkResult{status: :error, errors: errors} ->
+        %Ash.BulkResult{status: status, errors: errors}
+        when status in [:error, :partial_success] ->
           debug_log(relationship.name, changeset, :create, :error, opts[:debug?])
-          error = List.first(List.wrap(errors))
 
-          if error do
-            input_index = List.first(input_indices_to_bulk_create)
-
-            error =
-              error
-              |> set_error_path(relationship, input_index, opts)
-
-            {:error, error}
+          if errors not in [nil, []] do
+            {:error,
+             set_bulk_error_paths(errors, input_indices_to_bulk_create, relationship, opts)}
           else
             {:error,
              add_bread_crumb(
@@ -1775,6 +1764,26 @@ defmodule Ash.Actions.ManagedRelationships do
       _ ->
         Enum.reverse(records)
     end
+  end
+
+  # Bulk create indexes only the inputs selected for creation. Translate that prefix
+  # back to the original relationship input before adding the relationship path.
+  defp set_bulk_error_paths(errors, input_indices, relationship, opts) when is_list(errors) do
+    Enum.map(errors, &set_bulk_error_paths(&1, input_indices, relationship, opts))
+  end
+
+  defp set_bulk_error_paths(%{errors: errors} = error, input_indices, relationship, opts)
+       when is_list(errors) do
+    %{error | errors: set_bulk_error_paths(errors, input_indices, relationship, opts)}
+  end
+
+  defp set_bulk_error_paths(%{path: [index | rest]} = error, input_indices, relationship, opts)
+       when is_integer(index) do
+    set_error_path(%{error | path: rest}, relationship, Enum.at(input_indices, index), opts)
+  end
+
+  defp set_bulk_error_paths(error, input_indices, relationship, opts) do
+    set_error_path(error, relationship, List.first(input_indices), opts)
   end
 
   defp set_error_path(error, relationship, input_index, opts) do

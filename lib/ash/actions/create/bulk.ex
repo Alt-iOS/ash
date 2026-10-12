@@ -1230,6 +1230,7 @@ defmodule Ash.Actions.Create.Bulk do
         %Ash.Changeset{} = changeset -> changeset
       end
     end)
+    |> Ash.Changeset.validate_identities()
     |> Ash.Actions.Helpers.Bulk.split_valid_invalid_changesets(opts)
     |> case do
       {[], invalid_changeset_errors} ->

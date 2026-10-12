@@ -12,6 +12,105 @@ defmodule Ash.Test.Actions.BulkCreateTest do
   alias Ash.Test.BulkTestChanges.ConditionalAfterActionErrorWithAfterTransaction
   alias Ash.Test.Domain, as: Domain
 
+  defmodule IdentityRecord do
+    use Ash.Resource, domain: Ash.Test.Domain, data_layer: Ash.DataLayer.Ets
+
+    actions do
+      defaults [:read, create: :*]
+    end
+
+    attributes do
+      uuid_primary_key :id
+      attribute :name, :ci_string, public?: true
+      attribute :archived_at, :utc_datetime_usec, public?: true
+    end
+
+    identities do
+      identity :active_name, [:name],
+        where: expr(is_nil(archived_at)),
+        pre_check_with: Ash.Test.Domain,
+        message: "already named",
+        field_names: [:name]
+    end
+  end
+
+  defmodule NilIdentityRecord do
+    use Ash.Resource, domain: Ash.Test.Domain, data_layer: Ash.DataLayer.Ets
+
+    actions do
+      defaults [:read, create: :*]
+    end
+
+    attributes do
+      uuid_primary_key :id
+      attribute :name, :string, public?: true
+    end
+
+    identities do
+      identity :name, [:name], nils_distinct?: false, pre_check_with: Ash.Test.Domain
+    end
+  end
+
+  describe "identities within a create batch" do
+    test "a later duplicate retains its native input error and identity message" do
+      name = "duplicate-#{System.unique_integer([:positive])}"
+
+      result =
+        Ash.bulk_create([%{name: name}, %{name: String.upcase(name)}], IdentityRecord, :create,
+          return_errors?: true,
+          return_records?: true,
+          stop_on_error?: false
+        )
+
+      assert [%Ash.Error.Invalid{errors: [error]}] = result.errors
+      assert result.error_count == 1
+      assert %{fields: [:name], message: "already named", path: [1]} = error
+      assert length(result.records) == 1
+    end
+
+    test "a conditional identity permits a duplicate outside its predicate" do
+      name = "conditional-#{System.unique_integer([:positive])}"
+
+      result =
+        Ash.bulk_create(
+          [
+            %{name: name, archived_at: DateTime.utc_now()},
+            %{name: name}
+          ],
+          IdentityRecord,
+          :create,
+          return_errors?: true,
+          return_records?: true
+        )
+
+      assert result.status == :success
+      assert length(result.records) == 2
+    end
+
+    test "distinct nils do not conflict within a batch" do
+      result =
+        Ash.bulk_create([%{}, %{}], IdentityRecord, :create,
+          return_errors?: true,
+          return_records?: true
+        )
+
+      assert result.status == :success
+      assert length(result.records) == 2
+    end
+
+    test "a nil identity declared non-distinct identifies the later input" do
+      result =
+        Ash.bulk_create([%{}, %{}], NilIdentityRecord, :create,
+          return_errors?: true,
+          return_records?: true,
+          stop_on_error?: false
+        )
+
+      assert result.error_count == 1
+      assert [%Ash.Error.Invalid{errors: [%{fields: [:name], path: [1]}]}] = result.errors
+    end
+  end
+
   defmodule Notifier do
     use Ash.Notifier
 
@@ -86,7 +185,9 @@ defmodule Ash.Test.Actions.BulkCreateTest do
     @impl Ash.Resource.Change
     def change(changeset, _opts, _context) do
       Ash.Changeset.before_action(changeset, fn changeset ->
-        Ash.Changeset.force_change_attribute(changeset, :title, "#{changeset.phase}")
+        title = Ash.Changeset.get_attribute(changeset, :title)
+
+        Ash.Changeset.force_change_attribute(changeset, :title, "#{changeset.phase}_#{title}")
       end)
     end
   end
@@ -819,7 +920,9 @@ defmodule Ash.Test.Actions.BulkCreateTest do
       |> Ash.Changeset.for_create(:create, %{})
       |> Ash.create!()
 
-    assert %Ash.BulkResult{records: [%{title: "before_action"}, %{title: "before_action"}]} =
+    assert %Ash.BulkResult{
+             records: [%{title: "before_action_title1"}, %{title: "before_action_title2"}]
+           } =
              Ash.bulk_create!(
                [%{title: "title1"}, %{title: "title2"}],
                Post,
@@ -1571,8 +1674,8 @@ defmodule Ash.Test.Actions.BulkCreateTest do
         capture_log(fn ->
           assert [] =
                    [
-                     %{title: "title1", authorize?: true},
-                     %{title: "title2", authorize?: true}
+                     %{title: "title3", authorize?: true},
+                     %{title: "title4", authorize?: true}
                    ]
                    |> Ash.bulk_create!(
                      Post,
