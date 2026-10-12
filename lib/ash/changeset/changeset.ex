@@ -3338,86 +3338,20 @@ defmodule Ash.Changeset do
   defp validate_identity(changeset, _, _), do: changeset
 
   defp do_validate_identity(changeset, identity, domain) do
-    if changeset.context[:private][:upsert_identity] == identity.name do
-      changeset
-    else
-      if changeset.action_type == :create ||
-           Enum.any?(identity.keys, &changing_attribute?(changeset, &1)) do
-        action = Ash.Resource.Info.primary_action(changeset.resource, :read).name
+    [changeset] = Ash.Actions.Helpers.Identity.validate([changeset], [{identity, domain}])
+    changeset
+  end
 
-        if Enum.any?(identity.keys, fn key ->
-             Ash.Resource.Info.calculation(changeset.resource, key)
-           end) do
-          raise ArgumentError, "Cannot pre or eager check an identity based on calculated fields."
-        end
+  @doc false
+  def validate_identities([]), do: []
 
-        values =
-          Enum.map(identity.keys, fn key ->
-            case Ash.Changeset.get_attribute(changeset, key) do
-              nil ->
-                {key, is_nil: true}
+  def validate_identities([first | _] = changesets) do
+    identities =
+      for identity <- Ash.Resource.Info.identities(first.resource),
+          domain = identity.pre_check_with || identity.eager_check_with,
+          do: {identity, domain}
 
-              value ->
-                {key, value}
-            end
-          end)
-
-        if identity.nils_distinct? && Enum.any?(values, &(elem(&1, 1) == [is_nil: true])) do
-          changeset
-        else
-          tenant =
-            if identity.all_tenants? do
-              if !Ash.Resource.Info.multitenancy_global?(changeset.resource) do
-                raise ArgumentError,
-                  message: """
-                  Cannot pre or eager check an identity that has `all_tenants?: true`
-                  unless the resource supports global multitenancy.
-                  """
-              end
-
-              nil
-            else
-              changeset.tenant
-            end
-
-          changeset.resource
-          |> Ash.Query.for_read(action, %{},
-            tenant: tenant,
-            actor: changeset.context[:private][:actor],
-            authorize?: changeset.context[:private][:authorize?],
-            tracer: changeset.context[:private][:tracer],
-            # Check uniqueness "as of" the write's instant: on a temporal resource the
-            # new row is `[as_of, ∞)`, so the conflicting set is the rows valid at `as_of`
-            # (an `@> as_of` read). `nil` (the default-`now()` write) leaves the read to
-            # default to `now()`, which matches the period the data layer will write.
-            as_of: changeset.as_of,
-            domain: domain
-          )
-          |> Ash.Query.do_filter(values)
-          |> Ash.Query.limit(1)
-          |> Ash.Query.set_context(%{private: %{internal?: true}})
-          |> Ash.read_one(authorize?: false)
-          |> case do
-            {:ok, nil} ->
-              changeset
-
-            {:ok, _} ->
-              error =
-                Ash.Error.Changes.InvalidChanges.exception(
-                  fields: identity.field_names || identity.keys,
-                  message: identity.message || "has already been taken"
-                )
-
-              add_error(changeset, error)
-
-            {:error, error} ->
-              add_error(changeset, error)
-          end
-        end
-      else
-        changeset
-      end
-    end
+    Ash.Actions.Helpers.Identity.validate(changesets, identities)
   end
 
   defp require_arguments(changeset, action) do
@@ -6041,8 +5975,10 @@ defmodule Ash.Changeset do
       doc: """
       When `true`, uses bulk create operations for managing has_many relationships instead of
       creating records individually. This can be more efficient for large numbers of related
-      records, but error paths may not correctly identify which specific input caused a failure
-      when a constraint violation occurs during the batch insert.
+      records. Errors are reported against the input that caused them, and identities with
+      `pre_check_with` or `eager_check_with` are checked for each input before the batch is
+      inserted. An error the data layer raises for the batch as a whole, such as a constraint
+      violation, cannot be traced to the input that caused it.
       """
     ]
   ]

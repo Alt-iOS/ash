@@ -129,6 +129,10 @@ defmodule Ash.Test.Resource.UnrelatedExistsTest do
         public? true
       end
     end
+
+    aggregates do
+      count :vote_count, :user_votes, public?: true
+    end
   end
 
   defmodule UserVote do
@@ -241,6 +245,29 @@ defmodule Ash.Test.Resource.UnrelatedExistsTest do
 
       assert length(users) == 1
       assert hd(users).id == user1.id
+    end
+
+    test "an authorized read can use an aggregate inside an unrelated exists", %{
+      admin: admin,
+      user1: user1
+    } do
+      Ash.create!(UserVote, %{user_id: user1.id, score: 1})
+
+      profiles =
+        Profile
+        |> Ash.Query.filter(
+          exists(
+            User,
+            name == parent(name) and
+              exists(
+                user_votes,
+                score > 0 and exists(user, vote_count > 0 and exists(user_votes, score > 0))
+              )
+          )
+        )
+        |> Ash.read!(actor: admin, authorize?: true)
+
+      assert Enum.map(profiles, & &1.name) == ["John"]
     end
 
     test "can use multiple unrelated exists in same filter", %{user1: user1, user2: user2} do
@@ -630,6 +657,33 @@ defmodule Ash.Test.Resource.UnrelatedExistsTest do
                  resource: Ash.Test.Resource.UnrelatedExistsTest.Report
                }
              } = expr_ast.expr
+    end
+
+    test "an unrelated exists directly inside a relationship exists keeps its resource" do
+      expr_ast = expr(exists(user_votes, exists(Report, author_name == "John")))
+
+      assert %Ash.Query.Exists{
+               related?: true,
+               path: [:user_votes],
+               expr: %Ash.Query.Exists{related?: false, resource: Report}
+             } = expr_ast
+
+      voter = Ash.create!(User, %{name: "Voter", email: "voter@example.com"})
+      Ash.create!(UserVote, %{user_id: voter.id, score: 1})
+      Ash.create!(Report, %{title: "John's Report", author_name: "John"})
+
+      voted_with_report =
+        User
+        |> Ash.Query.filter(exists(user_votes, exists(Report, author_name == "John")))
+        |> Ash.read!()
+
+      voted_without_report =
+        User
+        |> Ash.Query.filter(exists(user_votes, exists(Report, author_name == "Nobody")))
+        |> Ash.read!()
+
+      assert Enum.map(voted_with_report, & &1.id) == [voter.id]
+      assert voted_without_report == []
     end
 
     test "unrelated exists with aggregate comparisons" do

@@ -3493,12 +3493,18 @@ defmodule Ash.Query do
   - `calculate/8` for custom calculations
   - `Ash.read/2` for executing queries with aggregates
   """
-  @spec aggregate(t() | Ash.Resource.t(), atom() | String.t(), atom(), atom()) :: t()
+  @spec aggregate(t() | Ash.Resource.t(), atom() | String.t(), atom(), atom() | [atom()]) :: t()
   def aggregate(query, name, kind, relationship) do
     aggregate(query, name, kind, relationship, [])
   end
 
-  @spec aggregate(t() | Ash.Resource.t(), atom() | String.t(), atom(), atom(), Keyword.t()) :: t()
+  @spec aggregate(
+          t() | Ash.Resource.t(),
+          atom() | String.t(),
+          atom(),
+          atom() | [atom()],
+          Keyword.t()
+        ) :: t()
 
   def aggregate(query, name, kind, relationship, opts) when is_list(opts) do
     agg_query = opts[:query]
