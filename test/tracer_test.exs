@@ -255,6 +255,31 @@ defmodule Ash.Test.TracerTest.AsyncLoadTest do
     assert Enum.any?(spans, &(&1.name == "domain:author.read"))
   end
 
+  test "loads run in other processes are traced inside the read's span" do
+    author =
+      Ash.Changeset.for_create(Author, :create, %{name: "anc"})
+      |> Ash.create!()
+
+    Ash.Changeset.for_create(Post, :create, %{title: "title", author_id: author.id})
+    |> Ash.create!()
+
+    # Two loads start the async limiter, which runs the first in another process.
+    Post
+    |> Ash.Query.load([:author, :categories])
+    |> Ash.read!(tracer: Ash.Tracer.Simple)
+
+    assert [
+             %Ash.Tracer.Simple.Span{
+               type: :action,
+               name: "domain:post.read",
+               spans: spans
+             }
+           ] = Ash.Tracer.Simple.gather_spans()
+
+    assert Enum.any?(spans, &(&1.name == "domain:author.read"))
+    assert Enum.any?(spans, &(&1.name == "domain:category.read"))
+  end
+
   test "a read with calculation loads calls the tracer" do
     Ash.Changeset.for_create(Author, :create, %{name: "anc"})
     |> Ash.create!()

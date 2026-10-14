@@ -48,7 +48,7 @@ defmodule Ash.Actions.Read.AsyncLimiter do
                 release(async_limiter)
               end
             end,
-            opts
+            with_tracer(opts, query)
           )
         else
           func.()
@@ -107,6 +107,17 @@ defmodule Ash.Actions.Read.AsyncLimiter do
       {task, nil}, {complete, pending} ->
         {complete, [task | pending]}
     end)
+  end
+
+  # Loads pass options built from their query's context, which keeps the tracer under
+  # `private`. Without a tracer the new process gets no span context, and its spans start
+  # outside the read's.
+  defp with_tracer(opts, query) do
+    if opts[:tracer] do
+      opts
+    else
+      Keyword.put(opts, :tracer, query.context[:private][:tracer])
+    end
   end
 
   defp in_transaction?(query) do
