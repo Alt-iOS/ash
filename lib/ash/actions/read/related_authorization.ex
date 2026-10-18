@@ -128,28 +128,42 @@ defmodule Ash.Actions.Read.RelatedAuthorization do
     end)
   end
 
+  # A calculation whose expression reads the actor or the context is left for the related query to
+  # expand, which fills those templates from its own actor and context: the calculation's context
+  # here has neither, so expanding it now would fill them with nil.
   defp trust_calculation(calculation, [resource | parents] = stack) do
     calculation = %{calculation | authorize?: false}
 
-    if Ash.Resource.Calculation.has_expression?(calculation.module) do
-      calculation.module
-      |> Ash.Resource.Calculation.expression(calculation.opts, calculation.context)
-      |> Ash.Filter.hydrate_refs(%{resource: resource, parent_stack: parents, public?: false})
-      |> case do
-        {:ok, expression} ->
-          %{
-            calculation
-            | module: Ash.Resource.Calculation.Expression,
-              opts: [expr: trust(expression, stack)]
-          }
-
-        {:error, _} ->
-          calculation
-      end
+    with true <- Ash.Resource.Calculation.has_expression?(calculation.module),
+         false <- reads_actor_or_context?(calculation.opts[:expr]),
+         expression =
+           Ash.Resource.Calculation.expression(
+             calculation.module,
+             calculation.opts,
+             calculation.context
+           ),
+         {:ok, expression} <-
+           Ash.Filter.hydrate_refs(expression, %{
+             resource: resource,
+             parent_stack: parents,
+             public?: false
+           }) do
+      %{
+        calculation
+        | module: Ash.Resource.Calculation.Expression,
+          opts: [expr: trust(expression, stack)]
+      }
     else
-      calculation
+      _ -> calculation
     end
   end
+
+  defp reads_actor_or_context?(nil), do: false
+
+  defp reads_actor_or_context?(expression),
+    do:
+      Ash.Expr.template_references_context?(expression) or
+        Ash.Expr.template_references_actor?(expression)
 
   defp authorize_calculation?(calculation) do
     Map.get(calculation, :authorize?, false) == true &&
