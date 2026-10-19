@@ -1998,6 +1998,19 @@ defmodule Ash.Filter do
 
         {{key, value}, cache}
 
+      %Ash.Query.Exists{related?: false, resource: unrelated, expr: expr} = exists ->
+        {expr, cache} =
+          do_update_aggregates(
+            expr,
+            unrelated,
+            mapper,
+            [],
+            [{resource, nested_path} | parent_paths],
+            cache
+          )
+
+        {%{exists | expr: expr}, cache}
+
       %Ash.Query.Exists{expr: expr, path: path, at_path: at_path} = exists ->
         related = Ash.Resource.Info.related(resource, nested_path)
 
