@@ -1772,6 +1772,15 @@ defmodule Ash.Filter do
       {key, value} when is_atom(key) ->
         {key, update_aggregates(value, resource, mapper, nested_path, parent_paths)}
 
+      %Ash.Query.Exists{related?: false, resource: unrelated, expr: expr} = exists ->
+        %{
+          exists
+          | expr:
+              update_aggregates(expr, unrelated, mapper, [], [
+                {resource, nested_path} | parent_paths
+              ])
+        }
+
       %Ash.Query.Exists{expr: expr, path: path, at_path: at_path} = exists ->
         related = Ash.Resource.Info.related(resource, nested_path)
 
