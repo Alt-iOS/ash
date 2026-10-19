@@ -632,6 +632,33 @@ defmodule Ash.Test.Resource.UnrelatedExistsTest do
              } = expr_ast.expr
     end
 
+    test "an unrelated exists directly inside a relationship exists keeps its resource" do
+      expr_ast = expr(exists(user_votes, exists(Report, author_name == "John")))
+
+      assert %Ash.Query.Exists{
+               related?: true,
+               path: [:user_votes],
+               expr: %Ash.Query.Exists{related?: false, resource: Report}
+             } = expr_ast
+
+      voter = Ash.create!(User, %{name: "Voter", email: "voter@example.com"})
+      Ash.create!(UserVote, %{user_id: voter.id, score: 1})
+      Ash.create!(Report, %{title: "John's Report", author_name: "John"})
+
+      voted_with_report =
+        User
+        |> Ash.Query.filter(exists(user_votes, exists(Report, author_name == "John")))
+        |> Ash.read!()
+
+      voted_without_report =
+        User
+        |> Ash.Query.filter(exists(user_votes, exists(Report, author_name == "Nobody")))
+        |> Ash.read!()
+
+      assert Enum.map(voted_with_report, & &1.id) == [voter.id]
+      assert voted_without_report == []
+    end
+
     test "unrelated exists with aggregate comparisons" do
       users =
         User

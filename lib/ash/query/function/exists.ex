@@ -15,7 +15,11 @@ defmodule Ash.Query.Exists do
     raise "Cannot construct an exists query with an empty path, at #{inspect(%__MODULE__{path: [], expr: expr})}"
   end
 
-  def new(path, %__MODULE__{at_path: [], expr: inner_expr, path: inner_path}, at_path) do
+  def new(
+        path,
+        %__MODULE__{related?: true, at_path: [], expr: inner_expr, path: inner_path},
+        at_path
+      ) do
     %__MODULE__{at_path: at_path, expr: inner_expr, path: path ++ inner_path}
   end
 
