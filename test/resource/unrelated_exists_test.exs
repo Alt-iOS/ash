@@ -129,6 +129,10 @@ defmodule Ash.Test.Resource.UnrelatedExistsTest do
         public? true
       end
     end
+
+    aggregates do
+      count :vote_count, :user_votes, public?: true
+    end
   end
 
   defmodule UserVote do
@@ -241,6 +245,29 @@ defmodule Ash.Test.Resource.UnrelatedExistsTest do
 
       assert length(users) == 1
       assert hd(users).id == user1.id
+    end
+
+    test "an authorized read can use an aggregate inside an unrelated exists", %{
+      admin: admin,
+      user1: user1
+    } do
+      Ash.create!(UserVote, %{user_id: user1.id, score: 1})
+
+      profiles =
+        Profile
+        |> Ash.Query.filter(
+          exists(
+            User,
+            name == parent(name) and
+              exists(
+                user_votes,
+                score > 0 and exists(user, vote_count > 0 and exists(user_votes, score > 0))
+              )
+          )
+        )
+        |> Ash.read!(actor: admin, authorize?: true)
+
+      assert Enum.map(profiles, & &1.name) == ["John"]
     end
 
     test "can use multiple unrelated exists in same filter", %{user1: user1, user2: user2} do
