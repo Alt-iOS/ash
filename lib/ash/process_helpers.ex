@@ -8,23 +8,38 @@ defmodule Ash.ProcessHelpers do
   """
 
   @doc """
-  Gets all of the ash context so it can be set into a new process.
+  Gets all of the ash context so it can be set into a new process: each tracer's span context,
+  and the values of the process dictionary keys listed in the `:transfer_process_keys` config,
+  such as the locale Gettext keeps per process.
+
+      config :ash, :transfer_process_keys, [Gettext, MyAppWeb.Gettext]
 
   Use `transfer_context/1` in the new process to set the context.
   """
   @spec get_context_for_transfer(opts :: Keyword.t()) :: term
   def get_context_for_transfer(opts \\ []) do
-    opts[:tracer]
-    |> List.wrap()
-    |> Map.new(fn tracer ->
-      {tracer, Ash.Tracer.get_span_context(tracer)}
+    tracers =
+      opts[:tracer]
+      |> List.wrap()
+      |> Map.new(fn tracer ->
+        {tracer, Ash.Tracer.get_span_context(tracer)}
+      end)
+
+    :ash
+    |> Application.get_env(:transfer_process_keys, [])
+    |> Enum.reduce(tracers, fn key, context ->
+      case Process.get(key) do
+        nil -> context
+        value -> Map.put(context, {__MODULE__, key}, value)
+      end
     end)
   end
 
   @spec transfer_context(term, opts :: Keyword.t()) :: :ok
-  def transfer_context(tracer_context, _opts \\ []) do
-    Enum.each(tracer_context || %{}, fn {tracer, tracer_context} ->
-      Ash.Tracer.set_span_context(tracer, tracer_context)
+  def transfer_context(context, _opts \\ []) do
+    Enum.each(context || %{}, fn
+      {{__MODULE__, key}, value} -> Process.put(key, value)
+      {tracer, tracer_context} -> Ash.Tracer.set_span_context(tracer, tracer_context)
     end)
   end
 
