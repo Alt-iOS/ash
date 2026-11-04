@@ -800,7 +800,7 @@ defmodule Ash.Test.Actions.BulkUpdateTest do
 
   test "the `filter` option skips records that no longer match it with the stream strategy" do
     [unchanged, changed] =
-      Ash.bulk_create!([%{title: "title"}, %{title: "title"}], Post, :create,
+      Ash.bulk_create!([%{title: "title"}, %{title: "other title"}], Post, :create,
         return_records?: true,
         authorize?: false
       ).records
