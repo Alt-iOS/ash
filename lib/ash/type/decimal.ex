@@ -107,10 +107,15 @@ defmodule Ash.Type.Decimal do
     end
   end
 
-  def apply_atomic_constraints(expr, constraints) do
-    if Ash.Expr.expr?(expr) do
+  def apply_atomic_constraints(value, constraints) do
+    if Ash.Expr.expr?(value) do
+      # Each check reads the value itself and nests the next only in a branch: an error inside
+      # another check's condition has no type a data layer can give it. The first constraint is
+      # checked first.
       expr =
-        Enum.reduce(constraints, expr, fn
+        constraints
+        |> Enum.reverse()
+        |> Enum.reduce(value, fn
           {:precision, :arbitrary}, expr ->
             expr
 
@@ -119,7 +124,7 @@ defmodule Ash.Type.Decimal do
 
           {:scale, scale}, expr ->
             expr(
-              if round(^expr, ^scale) != ^expr do
+              if round(^value, ^scale) != ^value do
                 error(
                   Ash.Error.Changes.InvalidChanges,
                   message: ^error_message("must have no more than %{scale} decimal places"),
@@ -132,7 +137,7 @@ defmodule Ash.Type.Decimal do
 
           {:max, max}, expr ->
             expr(
-              if ^expr > ^max do
+              if ^value > ^max do
                 error(
                   Ash.Error.Changes.InvalidChanges,
                   message: ^error_message("must be less than or equal to %{max}"),
@@ -145,7 +150,7 @@ defmodule Ash.Type.Decimal do
 
           {:min, min}, expr ->
             expr(
-              if ^expr < ^min do
+              if ^value < ^min do
                 error(
                   Ash.Error.Changes.InvalidChanges,
                   message: ^error_message("must be greater than or equal to %{min}"),
@@ -158,7 +163,7 @@ defmodule Ash.Type.Decimal do
 
           {:less_than, less_than}, expr ->
             expr(
-              if ^expr < ^less_than do
+              if ^value < ^less_than do
                 ^expr
               else
                 error(
@@ -171,7 +176,7 @@ defmodule Ash.Type.Decimal do
 
           {:greater_than, greater_than}, expr ->
             expr(
-              if ^expr > ^greater_than do
+              if ^value > ^greater_than do
                 ^expr
               else
                 error(
@@ -185,7 +190,7 @@ defmodule Ash.Type.Decimal do
 
       {:ok, expr}
     else
-      apply_constraints(expr, constraints)
+      apply_constraints(value, constraints)
     end
   end
 

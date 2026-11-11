@@ -26,6 +26,11 @@ defmodule Ash.Test.Type.DecimalTest do
         argument :by, :decimal, allow_nil?: false
         change atomic_update(:scaled_amount, expr(scaled_amount + ^arg(:by)))
       end
+
+      update :add_to_bounded_scaled_amount do
+        argument :by, :decimal, allow_nil?: false
+        change atomic_update(:bounded_scaled_amount, expr(bounded_scaled_amount + ^arg(:by)))
+      end
     end
 
     attributes do
@@ -61,6 +66,11 @@ defmodule Ash.Test.Type.DecimalTest do
         allow_nil?: false,
         constraints: [scale: :arbitrary],
         public?: true
+
+      attribute :bounded_scaled_amount, :decimal,
+        allow_nil?: false,
+        constraints: [min: 0, scale: 2],
+        public?: true
     end
   end
 
@@ -71,7 +81,8 @@ defmodule Ash.Test.Type.DecimalTest do
     precise_amount: 1.23,
     arbitrary_amount: 1.234567890,
     scaled_amount: 12.34,
-    arbitrary_scale_amount: 1.234567890
+    arbitrary_scale_amount: 1.234567890,
+    bounded_scaled_amount: 1.00
   }
 
   test "pass with valid attrs" do
@@ -428,6 +439,69 @@ defmodule Ash.Test.Type.DecimalTest do
 
     assert Decimal.equal?(updated.scaled_amount, Decimal.new("13"))
   end
+
+  # A data layer types an error from the branch it stands in. An error inside another check's
+  # condition has no type there: Postgres refused `min: 0` beside `scale: 2` with "CASE types
+  # numeric and boolean cannot be matched".
+  for constraints <- [
+        [min: 0, scale: 2],
+        [scale: 2, min: 0],
+        [max: 10, scale: 2],
+        [less_than: 10, scale: 2],
+        [greater_than: 0, scale: 2]
+      ] do
+    test "the atomic checks of #{inspect(constraints)} each read the value, not another check" do
+      {:ok, checked} =
+        Ash.Type.Decimal.apply_atomic_constraints(
+          Ash.Expr.expr(amount + 1),
+          unquote(constraints)
+        )
+
+      assert errors_in_conditions(checked) == 0
+    end
+  end
+
+  test "scale beside min is checked in an atomic update, each with its own error" do
+    balance =
+      Balance
+      |> Ash.Changeset.for_create(:create, @valid_attrs)
+      |> Ash.create!()
+
+    assert {:error, %Ash.Error.Invalid{} = error} =
+             balance
+             |> Ash.Changeset.for_update(:add_to_bounded_scaled_amount, %{
+               by: Decimal.new("0.001")
+             })
+             |> Ash.update()
+
+    assert Exception.message(error) =~ "must have no more than 2 decimal places"
+
+    assert {:error, %Ash.Error.Invalid{} = error} =
+             balance
+             |> Ash.Changeset.for_update(:add_to_bounded_scaled_amount, %{by: Decimal.new("-2")})
+             |> Ash.update()
+
+    assert Exception.message(error) =~ "must be greater than or equal to"
+
+    assert {:ok, updated} =
+             balance
+             |> Ash.Changeset.for_update(:add_to_bounded_scaled_amount, %{by: Decimal.new("-1")})
+             |> Ash.update()
+
+    assert Decimal.equal?(updated.bounded_scaled_amount, Decimal.new("0"))
+  end
+
+  defp errors_in_conditions(%Ash.Query.Call{name: :if, args: [condition, [do: yes, else: no]]}),
+    do: errors(condition) + errors_in_conditions(yes) + errors_in_conditions(no)
+
+  defp errors_in_conditions(%Ash.Query.Call{name: :error}), do: 0
+  defp errors_in_conditions(other), do: errors(other)
+
+  defp errors(%Ash.Query.Call{name: :error}), do: 1
+  defp errors(%Ash.Query.Call{args: args}), do: errors(args)
+  defp errors(list) when is_list(list), do: list |> Enum.map(&errors/1) |> Enum.sum()
+  defp errors({_key, value}), do: errors(value)
+  defp errors(_value), do: 0
 
   test "both precision and scale constraints prevent atomic usage" do
     # Test that both constraints together prevent atomic casting
