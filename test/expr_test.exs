@@ -191,6 +191,21 @@ defmodule Ash.Test.ExprTest do
       assert {:ok, {Ash.Type.Integer, constraints}} = Ash.Expr.determine_type(conflict)
       assert constraints[:min] == 0
     end
+
+    # An atomic value of an attribute that may not be nil is wrapped in `required!`: a function
+    # of several signatures given it, such as `round`, took its first one, a float's, and a data
+    # layer then cast the value to a float.
+    test "required!/2 has the type of the value it requires" do
+      {:ok, on_hand} = Ash.Filter.hydrate_refs(expr(on_hand + 1), %{resource: Resource})
+
+      {:ok, required} =
+        Ash.Query.Function.RequiredError.new([on_hand, %{name: :on_hand, resource: Resource}])
+
+      assert {:ok, {Ash.Type.Integer, _}} = Ash.Expr.determine_type(required)
+
+      assert {[{Ash.Type.Integer, _}, {Ash.Type.Integer, _}], {Ash.Type.Integer, _}} =
+               Ash.Expr.determine_types(Ash.Query.Function.Round, [required, 2])
+    end
   end
 
   describe "string interpolation" do
