@@ -21,6 +21,11 @@ defmodule Ash.Test.Type.DecimalTest do
     actions do
       default_accept :*
       defaults [:create, :read, :update, :destroy]
+
+      update :add_to_scaled_amount do
+        argument :by, :decimal, allow_nil?: false
+        change atomic_update(:scaled_amount, expr(scaled_amount + ^arg(:by)))
+      end
     end
 
     attributes do
@@ -389,13 +394,39 @@ defmodule Ash.Test.Type.DecimalTest do
     assert message =~ "precision"
   end
 
-  test "scale constraint prevents atomic usage" do
-    # Test that scale constraint prevents atomic casting
+  test "scale constraint allows atomic usage" do
     constraints = [scale: 2]
     expr = Ash.Expr.expr(1 + 1)
 
-    assert {:not_atomic, message} = Ash.Type.Decimal.cast_atomic(expr, constraints)
-    assert message =~ "scale"
+    assert {:atomic, _} = Ash.Type.Decimal.cast_atomic(expr, constraints)
+  end
+
+  test "scale constraint is checked in an atomic update" do
+    balance =
+      Balance
+      |> Ash.Changeset.for_create(:create, @valid_attrs)
+      |> Ash.create!()
+
+    updated =
+      balance
+      |> Ash.Changeset.for_update(:add_to_scaled_amount, %{by: Decimal.new("0.01")})
+      |> Ash.update!()
+
+    assert Decimal.equal?(updated.scaled_amount, Decimal.new("12.35"))
+
+    assert {:error, %Ash.Error.Invalid{} = error} =
+             updated
+             |> Ash.Changeset.for_update(:add_to_scaled_amount, %{by: Decimal.new("0.001")})
+             |> Ash.update()
+
+    assert Exception.message(error) =~ "must have no more than 2 decimal places"
+
+    assert {:ok, updated} =
+             updated
+             |> Ash.Changeset.for_update(:add_to_scaled_amount, %{by: Decimal.new("0.650")})
+             |> Ash.update()
+
+    assert Decimal.equal?(updated.scaled_amount, Decimal.new("13"))
   end
 
   test "both precision and scale constraints prevent atomic usage" do

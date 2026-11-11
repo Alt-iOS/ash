@@ -100,16 +100,10 @@ defmodule Ash.Type.Decimal do
 
   @impl true
   def cast_atomic(expr, constraints) do
-    cond do
-      constraints[:precision] && constraints[:precision] != :arbitrary ->
-        {:not_atomic,
-         "cannot atomically validate the `precision` of a decimal with an expression"}
-
-      constraints[:scale] && constraints[:scale] != :arbitrary ->
-        {:not_atomic, "cannot atomically validate the `scale` of a decimal with an expression"}
-
-      true ->
-        {:atomic, expr}
+    if constraints[:precision] && constraints[:precision] != :arbitrary do
+      {:not_atomic, "cannot atomically validate the `precision` of a decimal with an expression"}
+    else
+      {:atomic, expr}
     end
   end
 
@@ -122,6 +116,19 @@ defmodule Ash.Type.Decimal do
 
           {:scale, :arbitrary}, expr ->
             expr
+
+          {:scale, scale}, expr ->
+            expr(
+              if round(^expr, ^scale) != ^expr do
+                error(
+                  Ash.Error.Changes.InvalidChanges,
+                  message: ^error_message("must have no more than %{scale} decimal places"),
+                  vars: %{scale: ^scale}
+                )
+              else
+                ^expr
+              end
+            )
 
           {:max, max}, expr ->
             expr(
