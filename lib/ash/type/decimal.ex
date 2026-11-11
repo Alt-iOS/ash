@@ -111,7 +111,8 @@ defmodule Ash.Type.Decimal do
     if Ash.Expr.expr?(value) do
       # Each check reads the value itself and nests the next only in a branch: an error inside
       # another check's condition has no type a data layer can give it. The first constraint is
-      # checked first.
+      # checked first. The scale check says the value is a decimal: given a value whose type is
+      # not known, `round` takes a float's signature and the two would be compared as floats.
       expr =
         constraints
         |> Enum.reverse()
@@ -124,7 +125,7 @@ defmodule Ash.Type.Decimal do
 
           {:scale, scale}, expr ->
             expr(
-              if round(^value, ^scale) != ^value do
+              if round(type(^value, :decimal), ^scale) != type(^value, :decimal) do
                 error(
                   Ash.Error.Changes.InvalidChanges,
                   message: ^error_message("must have no more than %{scale} decimal places"),
