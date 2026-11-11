@@ -491,6 +491,56 @@ defmodule Ash.Test.Type.DecimalTest do
     assert Decimal.equal?(updated.bounded_scaled_amount, Decimal.new("0"))
   end
 
+  # A value whose type its expression does not say, as `required!` wraps a value that may not be
+  # nil, gave `round` its first signature, a float's: a data layer then compared the value with
+  # its rounding as floats, and a value with more decimals than its scale allows, beyond a
+  # float's sixteen digits or so, equalled its rounding and passed.
+  test "the atomic scale check compares as decimals a value whose type is not known" do
+    {:ok, amount} =
+      Ash.Filter.hydrate_refs(Ash.Expr.expr(amount + 1), %{resource: Balance, public?: false})
+
+    {:ok, required} =
+      Ash.Query.Function.RequiredError.new([amount, %{name: :amount, resource: Balance}])
+
+    {:ok, checked} = Ash.Type.Decimal.apply_atomic_constraints(required, scale: 2)
+
+    {:ok, %{arguments: [%{left: round, right: value} = differs | _]}} =
+      Ash.Filter.hydrate_refs(checked, %{resource: Balance, public?: false})
+
+    assert {_, {Ash.Type.Decimal, _}} =
+             Ash.Expr.determine_types(round.__struct__, round.arguments)
+
+    assert {[{Ash.Type.Decimal, _}, {Ash.Type.Decimal, _}], _} =
+             Ash.Expr.determine_types(differs.__struct__, [round, value])
+  end
+
+  # Evaluated in memory the decimals compare exactly; a data layer compares them as the check
+  # types them, which the test above asserts.
+  test "scale is checked in an atomic update beyond a float's precision" do
+    balance =
+      Balance
+      |> Ash.Changeset.for_create(:create, @valid_attrs)
+      |> Ash.create!()
+
+    assert {:error, %Ash.Error.Invalid{} = error} =
+             balance
+             |> Ash.Changeset.for_update(:add_to_bounded_scaled_amount, %{
+               by: Decimal.new("0.000000000000000001")
+             })
+             |> Ash.update()
+
+    assert Exception.message(error) =~ "must have no more than 2 decimal places"
+
+    assert {:ok, updated} =
+             balance
+             |> Ash.Changeset.for_update(:add_to_bounded_scaled_amount, %{
+               by: Decimal.new("123456789012345678.99")
+             })
+             |> Ash.update()
+
+    assert Decimal.equal?(updated.bounded_scaled_amount, Decimal.new("123456789012345679.99"))
+  end
+
   defp errors_in_conditions(%Ash.Query.Call{name: :if, args: [condition, [do: yes, else: no]]}),
     do: errors(condition) + errors_in_conditions(yes) + errors_in_conditions(no)
 
