@@ -1935,6 +1935,10 @@ defmodule Ash.Expr do
       %{__struct__: Ash.Query.Function.GetPath, arguments: [left, path]} ->
         determine_get_path_type(left, path)
 
+      # The value it requires, or an error: it has its value's type.
+      %{__struct__: Ash.Query.Function.RequiredError, arguments: [value, _attribute]} ->
+        determine_type(value)
+
       %mod{__predicate__?: _, arguments: arguments} ->
         case determine_types(mod, arguments, nil, true) do
           {_, nil} -> :error
