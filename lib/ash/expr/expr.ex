@@ -2062,6 +2062,7 @@ defmodule Ash.Expr do
   defp typed_operands(%{__struct__: Ash.Query.Function.Type, arguments: [_, _]}), do: nil
   defp typed_operands(%{__struct__: Ash.Query.Function.Type, arguments: [_, _, _]}), do: nil
   defp typed_operands(%{__struct__: Ash.Query.Function.GetPath, arguments: [_, _]}), do: nil
+  defp typed_operands(%{__struct__: Ash.Query.Function.RequiredError, arguments: [_, _]}), do: nil
   defp typed_operands(%mod{__predicate__?: _, arguments: arguments}), do: {mod, arguments}
   defp typed_operands(%mod{__predicate__?: _, left: left, right: right}), do: {mod, [left, right]}
   defp typed_operands(_), do: nil
@@ -2150,6 +2151,10 @@ defmodule Ash.Expr do
 
       %{__struct__: Ash.Query.Function.GetPath, arguments: [left, path]} ->
         determine_get_path_type(left, path)
+
+      # The value it requires, or an error: it has its value's type.
+      %{__struct__: Ash.Query.Function.RequiredError, arguments: [value, _attribute]} ->
+        determine_type(value)
 
       value when is_map(value) and not is_struct(value) and value != %{} ->
         determine_map_type(value)
