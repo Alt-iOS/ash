@@ -1061,7 +1061,11 @@ defmodule Ash.Test.Actions.BulkUpdateTest do
   test "an atomic bulk update given the action's name can report missed notifications" do
     post = Ash.create!(Post, %{title: "title1"}, authorize?: false)
 
-    missed = %Ash.Notifier.Notification{resource: MnesiaPost, domain: Domain, for: []}
+    missed = %Ash.Notifier.Notification{
+      resource: MnesiaPost,
+      domain: Domain,
+      for: [Ash.Notifier.PubSub]
+    }
 
     log =
       capture_log(fn ->
@@ -1081,6 +1085,19 @@ defmodule Ash.Test.Actions.BulkUpdateTest do
 
     assert log =~ "Missed 1 notifications in action"
     assert log =~ "BulkUpdateTest.Post.update"
+  end
+
+  test "a notification no notifier receives is not queued" do
+    Ash.Actions.Helpers.queue_notifications([
+      %Ash.Notifier.Notification{resource: Post, domain: Domain, for: []}
+    ])
+
+    assert Ash.Actions.Helpers.take_queued_notifications() == []
+
+    sent = %Ash.Notifier.Notification{resource: Post, domain: Domain, for: [Ash.Notifier.PubSub]}
+    Ash.Actions.Helpers.queue_notifications([[sent]])
+
+    assert Ash.Actions.Helpers.take_queued_notifications() == [sent]
   end
 
   test "context provided in opts is set on changesets, query context is not" do
