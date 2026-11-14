@@ -1170,6 +1170,19 @@ defmodule Ash.Test.Actions.BulkUpdateTest do
     assert log =~ "Missed 1 notifications in action"
   end
 
+  test "a notification no notifier receives is not queued" do
+    Ash.Actions.Helpers.queue_notifications([
+      %Ash.Notifier.Notification{resource: Post, domain: Domain, for: []}
+    ])
+
+    assert Ash.Actions.Helpers.take_queued_notifications() == []
+
+    sent = %Ash.Notifier.Notification{resource: Post, domain: Domain, for: [Ash.Notifier.PubSub]}
+    Ash.Actions.Helpers.queue_notifications([[sent]])
+
+    assert Ash.Actions.Helpers.take_queued_notifications() == [sent]
+  end
+
   test "context provided in opts is set on changesets, query context is not" do
     Ash.bulk_create!([%{title: "title1"}], Post, :create)
 
