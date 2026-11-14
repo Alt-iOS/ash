@@ -144,7 +144,7 @@ defmodule Ash.Resource.Calculation.Expression do
   end
 
   defp add_at_path(acc, [first | rest], value) do
-    Enum.reduce(acc, {acc, false}, fn
+    Enum.reduce(acc, {[], false}, fn
       {key, current}, {acc, _found?} when key == first ->
         {[{key, add_at_path(List.wrap(current), rest, value)} | acc], true}
 
