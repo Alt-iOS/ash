@@ -542,8 +542,10 @@ defmodule Ash.Actions.Helpers do
   end
 
   @doc false
+  # A notification no notifier receives (`for: []`) is never sent, so it is not queued: until the
+  # transaction ends, a queued notification holds its whole changeset in the process dictionary.
   def queue_notifications(notifications) do
-    case List.wrap(notifications) do
+    case notifications |> List.wrap() |> List.flatten() |> Enum.reject(&match?(%{for: []}, &1)) do
       [] ->
         :ok
 
