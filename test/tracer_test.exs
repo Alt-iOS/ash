@@ -268,17 +268,32 @@ defmodule Ash.Test.TracerTest.AsyncLoadTest do
     |> Ash.Query.load([:author, :categories])
     |> Ash.read!(tracer: Ash.Tracer.Simple)
 
-    assert [
-             %Ash.Tracer.Simple.Span{
-               type: :action,
-               name: "domain:post.read",
-               spans: spans
-             }
-           ] = Ash.Tracer.Simple.gather_spans()
+    # The spans are read as sent, each with its parent's id: other spans nest between the
+    # read and its loads, and arrive from more than one process.
+    spans = sent_spans()
+    by_id = Map.new(spans, &{&1.id, &1})
+    read = Enum.find(spans, &(&1.name == "domain:post.read"))
 
-    assert Enum.any?(spans, &(&1.name == "domain:author.read"))
-    assert Enum.any?(spans, &(&1.name == "domain:category.read"))
+    assert read.parent_id == nil
+
+    for name <- ["domain:author.read", "domain:category.read"] do
+      load = Enum.find(spans, &(&1.name == name))
+      assert read.id in ancestor_ids(load, by_id)
+    end
   end
+
+  defp sent_spans(spans \\ []) do
+    receive do
+      {:span, span} -> sent_spans([span | spans])
+    after
+      0 -> spans
+    end
+  end
+
+  defp ancestor_ids(%{parent_id: nil}, _by_id), do: []
+
+  defp ancestor_ids(%{parent_id: parent_id}, by_id),
+    do: [parent_id | ancestor_ids(Map.fetch!(by_id, parent_id), by_id)]
 
   test "a read with calculation loads calls the tracer" do
     Ash.Changeset.for_create(Author, :create, %{name: "anc"})
